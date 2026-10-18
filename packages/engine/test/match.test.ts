@@ -133,7 +133,7 @@ describe('整场状态机', () => {
       const w = winners[i]!;
       if (w === 'red') giveRedPath(m);
       else {
-        for (let x = 1; x <= 6; x++) m.round.cells[V(x, 3)] = { side: 'blue' };
+        for (let x = 1; x <= 7; x++) m.round.cells[V(x, 3)] = { side: 'blue' };
       }
       m.round.turn = w;
       if (w === 'red') {

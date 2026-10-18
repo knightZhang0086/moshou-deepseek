@@ -19,6 +19,8 @@ export interface NetCallbacks {
   onPeer(name: string, present: boolean): void;
   /** 仅 PeerJS host：收到 guest 提交的行动（host 本地引擎校验后广播 state） */
   onRemoteAction(seq: number, action: Action): void;
+  /** 仅 PeerJS host：收到 guest 的弃牌选择 */
+  onRemoteRemoval(card: CardId): void;
   /** 仅 PeerJS host：guest 已准备 */
   onRemoteReady(): void;
   /** 错误（code 见 PROTOCOL.md） */
@@ -108,7 +110,7 @@ class WsSession implements NetHandle {
   constructor(
     readonly role: NetRole,
     private readonly server: string,
-    private readonly code: string,
+    private code: string,
     private readonly name: string,
     private readonly config: MatchConfig | null,
     private readonly cb: NetCallbacks,
@@ -118,7 +120,8 @@ class WsSession implements NetHandle {
 
   private dial(): void {
     if (this.closed) return;
-    this.ws = new WebSocket(wsUrl(this.server));
+    // 房间码随连接 URL 传给服务器（create 时服务器会另发正式码，join 时定位房间）
+    this.ws = new WebSocket(`${wsUrl(this.server)}?code=${encodeURIComponent(this.code)}`);
     this.ws.onopen = () => {
       this.reconnectTries = 0;
       const creds = loadCreds();
@@ -139,6 +142,17 @@ class WsSession implements NetHandle {
       }
       switch (msg.t) {
         case 'created':
+          this.adoptCode(msg.code);
+          saveCreds({
+            code: msg.code,
+            token: msg.token,
+            role: this.role,
+            name: this.name,
+            server: this.server,
+            config: this.config ?? undefined,
+          });
+          this.cb.onOpen(msg.code);
+          break;
         case 'joined':
           saveCreds({
             code: this.code,
@@ -149,7 +163,7 @@ class WsSession implements NetHandle {
             config: this.config ?? undefined,
           });
           this.cb.onOpen(this.code);
-          if (msg.t === 'joined') this.cb.onState(msg.state);
+          this.cb.onState(msg.state);
           break;
         case 'resync':
           this.cb.onState(msg.state);
@@ -173,6 +187,11 @@ class WsSession implements NetHandle {
     this.ws.onerror = () => {
       /* onclose 会随后触发 */
     };
+  }
+
+  /** 采用服务器下发的正式房间码 */
+  private adoptCode(code: string): void {
+    this.code = code;
   }
 
   private scheduleReconnect(): void {
@@ -219,7 +238,7 @@ class PeerSession implements NetHandle {
   private conn: DataConnection | null = null;
   private closed = false;
 
-  private constructor(
+  constructor(
     readonly role: NetRole,
     private readonly code: string,
     private readonly name: string,
@@ -234,6 +253,12 @@ class PeerSession implements NetHandle {
   }
 
   private bindPeer(): void {
+    this.peer!.on('open', () => {
+      if (this.role === 'host' && !this.opened) {
+        this.opened = true;
+        this.cb.onOpen(this.code); // host 创建即可拿到房间码
+      }
+    });
     this.peer!.on('error', (err) => {
       if (this.closed) return;
       const type = String((err as { type?: string }).type ?? '');
@@ -256,10 +281,12 @@ class PeerSession implements NetHandle {
     }
   }
 
+  private opened = false;
+
   private bindConn(conn: DataConnection): void {
     conn.on('open', () => {
       if (this.role === 'host') {
-        this.cb.onOpen(this.code);
+        this.opened = true;
         this.cb.onPeer(this.guestName(), true);
       } else {
         this.send({ t: 'join', name: this.name });
@@ -310,8 +337,7 @@ class PeerSession implements NetHandle {
         this.cb.onRemoteAction(msg.seq, msg.action);
         break;
       case 'remove':
-        // guest 的弃牌选择走 onRemoteAction 之外的专用通道：直接由 store 处理
-        this.cb.onRemoteAction(-1, { kind: 'removeCard', card: msg.card } as unknown as Action);
+        this.cb.onRemoteRemoval(msg.card);
         break;
       case 'ping':
         this.send({ t: 'pong' } as ServerMsg);

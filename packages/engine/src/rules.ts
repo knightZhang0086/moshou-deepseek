@@ -42,7 +42,16 @@ function fail(reason: string): CheckResult {
 
 // ---------- 判定辅助 ----------
 
-/** 目标木片是否处于稳固状态（双端接应，或带坚守标记） */
+/** 城墙接应：木片贴着己方目标城墙的一端视为有城墙靠山。
+ *  红方目标城墙为南北两界（宋城/楚营，y=0 与 y=N）；
+ *  蓝方目标城墙为西东两界（西境起点 x=0 与东境出口虚节点 x=N）。 */
+export function isWallEndpoint(round: RoundState, side: Side, ep: { x: number; y: number }): boolean {
+  if (side === 'red') return ep.y === 0 || ep.y === round.size;
+  return ep.x === 0 || ep.x === round.size;
+}
+
+/** 目标木片是否处于稳固状态（双端接应，或带坚守标记）。
+ *  贴己方目标城墙的端点视为有“城墙”接应，不要求同阵营邻片。 */
 export function isSturdy(round: RoundState, cell: string, idx?: NodeIndex): boolean {
   const stick = round.cells[cell];
   if (!stick) return false;
@@ -53,6 +62,8 @@ export function isSturdy(round: RoundState, cell: string, idx?: NodeIndex): bool
   const byNode = stick.side === 'red' ? index.redByNode : index.blueByNode;
   const nodeKey = stick.side === 'red' ? redNodeKey : blueNodeKey;
   for (const ep of eps) {
+    // 城墙接应：视为已有同阵营靠山
+    if (isWallEndpoint(round, stick.side, ep)) continue;
     const nk = nodeKey(ep);
     const touching = (byNode.get(nk) ?? []).filter((k) => k !== cell);
     if (!touching.some((k) => round.cells[k]?.side === stick.side)) return false;
