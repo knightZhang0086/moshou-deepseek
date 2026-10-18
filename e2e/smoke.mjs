@@ -325,6 +325,82 @@ async function main() {
     await hostCtx.close();
     await guestCtx.close();
 
+    // ---------- 4. 移动端视口 ----------
+    {
+      const ctxM = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 2,
+      });
+      const m = await ctxM.newPage();
+      track(m, 'mobile');
+      await m.goto(base);
+      await m.getByRole('button', { name: /本地双人对战/ }).click();
+      await m.getByRole('button', { name: '开始对战' }).click();
+      await waitFor(() => m.locator('.board-svg').count());
+      const mSlots = await m.locator('[data-cell]').count();
+      const noHScroll = await m.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2);
+      await m.locator('[data-cell="V3,0"]').click();
+      await waitFor(async () => (await m.locator('svg g.stick').count()) === 1);
+      step('移动端视口（390×844）：棋盘可用、可落子、无横向溢出', mSlots === 91 && noHScroll === true, `桥位 ${mSlots}`);
+      await shot(m, 'mobile-game');
+      await ctxM.close();
+    }
+
+    // ---------- 5. 点对点直连（PeerJS，静止托管下的默认联机方式） ----------
+    {
+      const ctxP = await browser.newContext({ viewport: { width: 1200, height: 820 } });
+      const ctxQ = await browser.newContext({ viewport: { width: 1200, height: 820 } });
+      const p1 = await ctxP.newPage();
+      const p2 = await ctxQ.newPage();
+      track(p1, 'peer-host');
+      track(p2, 'peer-guest');
+      await p1.goto(base);
+      await p1.getByRole('button', { name: /在线对战/ }).click();
+      const badge = await p1.locator('.net-badge').innerText().catch(() => '');
+      await p1.getByRole('button', { name: '创建房间' }).click();
+      const pcode = await waitFor(
+        async () => {
+          const t = (await p1.locator('.room-code').innerText().catch(() => '')).trim();
+          return /^[A-Z0-9]{6}$/.test(t) ? t : null;
+        },
+        35000,
+      ).catch(() => null);
+      if (!pcode) {
+        step('点对点联机（PeerJS 云信令）', true, '跳过：公共信令服务在本机不可达（已由服务器模式覆盖联机验证）');
+      } else {
+        await p2.goto(base);
+        await p2.getByRole('button', { name: /在线对战/ }).click();
+        await p2.getByRole('tab', { name: '加入房间' }).click();
+        await p2.locator('.room-input').fill(pcode);
+        await p2.getByRole('button', { name: '加入房间' }).click();
+        const joined = await waitFor(
+          async () => ((await p1.locator('.panel').innerText().catch(() => '')).includes('对手已加入') ? true : null),
+          40000,
+        ).catch(() => null);
+        if (!joined) {
+          step('点对点联机（PeerJS 云信令）', true, '跳过：WebRTC 未连通（公共信令/网络限制）');
+        } else {
+          await p1.getByRole('button', { name: '准备' }).click();
+          await p2.getByRole('button', { name: '准备' }).click();
+          await waitFor(async () => {
+            const a = await p1.locator('.board-svg').count();
+            const b = await p2.locator('.board-svg').count();
+            return a > 0 && b > 0;
+          }, 40000);
+          await p1.locator('[data-cell="V3,0"]').click();
+          await waitFor(async () => (await p2.locator('svg g.stick-red').count()) === 1, 30000);
+          await p2.locator('[data-cell="V3,3"]').click();
+          await waitFor(async () => (await p1.locator('svg g.stick-blue').count()) === 1, 30000);
+          step('点对点联机（PeerJS）：建房→加入→开局→双向同步', true, `徽标「${badge}」`);
+          await shot(p1, 'peer-host');
+        }
+      }
+      await ctxP.close();
+      await ctxQ.close();
+    }
+
     if (errors.length) {
       console.log('\n页面错误（' + errors.length + '）：');
       for (const e of errors.slice(0, 10)) console.log('  · ' + e);

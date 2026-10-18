@@ -244,16 +244,20 @@ class PeerSession implements NetHandle {
     private readonly name: string,
     private readonly cb: NetCallbacks,
     peer: Peer,
-    conn: DataConnection | null,
   ) {
     this.peer = peer;
-    this.conn = conn;
     this.bindPeer();
-    if (conn) this.bindConn(conn);
+  }
+
+  /** 绑定数据通道（guest 在 peer open 之后才能拨号成功） */
+  attachConn(conn: DataConnection): void {
+    this.conn = conn;
+    this.bindConn(conn);
   }
 
   private bindPeer(): void {
-    this.peer!.on('open', () => {
+    this.peer!.on('open', (id) => {
+      console.info('[mscg-peer] open', this.role, id);
       if (this.role === 'host' && !this.opened) {
         this.opened = true;
         this.cb.onOpen(this.code); // host 创建即可拿到房间码
@@ -262,6 +266,7 @@ class PeerSession implements NetHandle {
     this.peer!.on('error', (err) => {
       if (this.closed) return;
       const type = String((err as { type?: string }).type ?? '');
+      console.warn('[mscg-peer] error', this.role, type, String((err as { message?: string }).message ?? ''));
       if (type === 'peer-unavailable') {
         this.cb.onError('房间不存在或房主已离线。', 'NO_ROOM');
       } else if (type === 'unavailable-id') {
@@ -271,20 +276,22 @@ class PeerSession implements NetHandle {
       }
     });
     this.peer!.on('disconnected', () => {
+      console.info('[mscg-peer] disconnected', this.role);
       if (!this.closed) this.peer?.reconnect();
     });
-    if (this.role === 'host') {
-      this.peer!.on('connection', (c) => {
-        this.conn = c;
-        this.bindConn(c);
-      });
-    }
+    this.peer!.on('connection', (c) => {
+      console.info('[mscg-peer] incoming connection', this.role);
+      if (this.role === 'host') {
+        this.attachConn(c);
+      }
+    });
   }
 
   private opened = false;
 
   private bindConn(conn: DataConnection): void {
     conn.on('open', () => {
+      console.info('[mscg-peer] conn open', this.role);
       if (this.role === 'host') {
         this.opened = true;
         this.cb.onPeer(this.guestName(), true);
@@ -369,9 +376,12 @@ class PeerSession implements NetHandle {
   private reconnectPeer(): void {
     if (this.role === 'host') return; // host 等待 guest 重拨
     if (!this.peer || this.peer.destroyed) return;
-    const conn = this.peer.connect(hostPeerId(this.code), { reliable: true });
-    this.conn = conn;
-    this.bindConn(conn);
+    const dial = () => {
+      const conn = this.peer!.connect(hostPeerId(this.code), { reliable: true });
+      this.attachConn(conn);
+    };
+    if (this.peer.open) dial();
+    else this.peer.once('open', dial);
   }
 
   private send(msg: ClientMsg | ServerMsg): void {
@@ -421,6 +431,28 @@ export interface PeerOptions {
   secure?: boolean;
 }
 
+/** 公共 STUN 服务器：PeerJS 的默认 ICE 配置会被自定义 init 覆盖，必须显式提供 */
+const DEFAULT_ICE: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+];
+
+/** 组装 PeerJS 构造参数：host/port/path/secure 与 config(ICE) 是并列字段 */
+function peerInit(opts: PeerOptions): Record<string, unknown> {
+  const init: Record<string, unknown> = {
+    debug: 1,
+    config: { iceServers: DEFAULT_ICE } as RTCConfiguration,
+  };
+  if (opts.host) {
+    init.host = opts.host;
+    if (opts.port !== undefined) init.port = opts.port;
+    if (opts.path !== undefined) init.path = opts.path;
+    if (opts.secure !== undefined) init.secure = opts.secure;
+  }
+  return init;
+}
+
 export function connectPeer(
   role: NetRole,
   code: string,
@@ -429,12 +461,20 @@ export function connectPeer(
   opts: PeerOptions = {},
 ): PeerSession {
   if (role === 'host') {
-    const peer = new Peer(hostPeerId(code), { debug: 0, config: opts });
-    return new PeerSession('host', code, name, cb, peer, null);
+    const peer = new Peer(hostPeerId(code), peerInit(opts));
+    return new PeerSession('host', code, name, cb, peer);
   }
-  const peer = new Peer({ debug: 0, config: opts });
-  const conn = peer.connect(hostPeerId(code), { reliable: true });
-  return new PeerSession('guest', code, name, cb, peer, conn);
+  const peer = new Peer(peerInit(opts));
+  const session = new PeerSession('guest', code, name, cb, peer);
+  const dial = () => {
+    if (session.role !== 'guest') return;
+    const conn = peer.connect(hostPeerId(code), { reliable: true });
+    session.attachConn(conn);
+  };
+  // 必须等 peer 与信令服务器建立连接（open）后再拨号，否则连接请求会被静默丢弃
+  if (peer.open) dial();
+  else peer.on('open', dial);
+  return session;
 }
 
 // ---------- 统一入口 ----------
