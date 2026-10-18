@@ -1,0 +1,19 @@
+{
+  "name": "moshou-deepseek",
+  "private": true,
+  "version": "0.5.0",
+  "description": "墨守成规：九攻九拒连线桌游（公输盘 vs 墨子，双人策略桌游）",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "dev:web": "pnpm --filter @moshou/web dev",
+    "dev:server": "pnpm --filter @moshou/server dev",
+    "sim": "pnpm --filter @moshou/engine sim"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@11.7.0"
+}
