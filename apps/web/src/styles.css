@@ -1691,3 +1691,68 @@ input {
     letter-spacing: 0.16em;
   }
 }
+
+/* ---------- 棋盘图例 / 悬停提示（v2 棋盘可读性） ---------- */
+.board-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  justify-content: center;
+  padding: 8px 10px 2px;
+  font-size: 12px;
+  color: #6b5a41;
+}
+
+.board-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.board-legend i {
+  display: inline-block;
+  flex: none;
+}
+
+.lg-red-node {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f7ecd8;
+  border: 2px solid #b23a2e;
+}
+
+.lg-blue-node {
+  width: 10px;
+  height: 10px;
+  background: #eef3f8;
+  border: 2px solid #2f5f8f;
+  border-radius: 2px;
+}
+
+.lg-slot {
+  width: 9px;
+  height: 9px;
+  background: rgba(43, 36, 28, 0.12);
+  border: 1px solid rgba(43, 36, 28, 0.45);
+  transform: rotate(45deg);
+}
+
+.lg-ghost {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.hover-hint {
+  color: #4a3824;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: rgba(74, 56, 36, 0.06);
+  border-left: 3px solid rgba(178, 58, 46, 0.55);
+  padding: 6px 10px;
+  border-radius: 4px;
+}

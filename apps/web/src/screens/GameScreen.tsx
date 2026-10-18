@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  blueEndpoints,
   bluePathInfo,
   buildNodeIndex,
   CARDS,
   convertTargets,
   makeSkillAction,
   otherSide,
+  parseCellKey,
   playableSkills,
+  redEndpoints,
   redPathInfo,
   remainingCards,
   SIDE_NAMES,
@@ -16,7 +19,7 @@ import {
   type Side,
 } from '@moshou/engine';
 import { useGame } from '../store';
-import { winText, winTitle } from '../describe';
+import { cellLabel, winText, winTitle } from '../describe';
 import Board from '../components/Board';
 import TopBar from '../components/TopBar';
 import ActionBar from '../components/ActionBar';
@@ -106,6 +109,7 @@ export default function GameScreen() {
 
   const [convertMode, setConvertMode] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [hoverSlot, setHoverSlot] = useState<string | null>(null);
   const [confirmSkill, setConfirmSkill] = useState<CardId | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [showCards, setShowCards] = useState(false);
@@ -219,6 +223,30 @@ export default function GameScreen() {
   }, [st, canAct]);
 
   const playable = useMemo(() => (st && canAct ? playableSkills(st) : []), [st, canAct]);
+
+  /** 己方当前最短推进路线（教学提示：空位画虚框） */
+  const myPathKeys = useMemo(() => {
+    if (!st || !canAct || st.pendingRemoval || st.matchWinner) return [];
+    const idx = buildNodeIndex(st.round.size);
+    const side = st.round.turn;
+    const info =
+      side === 'red'
+        ? redPathInfo(st.round.size, st.round.cells, idx)
+        : bluePathInfo(st.round.size, st.round.cells, idx);
+    return Number.isFinite(info.dist) ? info.pathCells : [];
+  }, [st, canAct]);
+
+  /** 悬停桥位的中文说明 */
+  const hoverText = useMemo(() => {
+    if (!st || !hoverSlot) return null;
+    const c = parseCellKey(hoverSlot);
+    const [a1, a2] = redEndpoints(c);
+    const [b1, b2] = blueEndpoints(c);
+    const occ = st.round.cells[hoverSlot];
+    const dirRed = c.d === 'H' ? '横向' : '竖向';
+    const dirBlue = c.d === 'H' ? '竖向' : '横向';
+    return `桥位 ${cellLabel(hoverSlot)}：红面连顶点 (${a1.x},${a1.y})–(${a2.x},${a2.y})（${dirRed}）；蓝面连格心 (${b1.x},${b1.y})–(${b2.x},${b2.y})（${dirBlue}）${occ ? ' · 此位已有木片' : ''}`;
+  }, [st, hoverSlot]);
 
   const lastActionKey = useMemo(() => {
     if (!st) return null;
@@ -364,16 +392,54 @@ export default function GameScreen() {
             convertTargetKeys={convertTargetKeys}
             skillTargetKeys={skillTargetKeys}
             pickedKeys={selection?.picked ?? []}
+            myPathKeys={myPathKeys}
             lastActionKey={lastActionKey}
             flashKeys={flash ? flash.cells : []}
             onCellClick={onCellClick}
+            onHoverSlot={setHoverSlot}
             animOn={settings.animOn}
           />
+
+          <div className="board-legend">
+            <span>
+              <i className="lg-red-node" />
+              红圈 · 公输盘节点（方格顶点）
+            </span>
+            <span>
+              <i className="lg-blue-node" />
+              蓝方块 · 墨子节点（格心）
+            </span>
+            <span>
+              <i className="lg-slot" />
+              菱形 · 桥位（可放木片）
+            </span>
+            <span>
+              <i className="lg-ghost" />
+              虚条 · 你在此放置的朝向
+            </span>
+          </div>
+
+          {hoverText && !selection && (
+            <p className="selection-hint hover-hint">{hoverText}</p>
+          )}
 
           {selection && (
             <p className="selection-hint">
               使用 <b>{CARDS[selection.card].name}</b>：
               {selectionHint(selection.card, selection.picked.length)}
+            </p>
+          )}
+
+          {!selection && !hoverText && canAct && (
+            <p className="selection-hint">
+              放置：点击任意菱形桥位。<b>木片朝向由桥位决定</b>（红方横竖皆有、蓝方亦然），
+              空位上的虚条即你在此放置时的实际朝向；悬停可查看该桥位连接的两个节点。
+            </p>
+          )}
+
+          {!selection && !hoverText && !canAct && (
+            <p className="selection-hint">
+              等待对方行动。可随时用「规则」「牌库」查看，不中断对局。
             </p>
           )}
 

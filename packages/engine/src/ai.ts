@@ -147,6 +147,9 @@ function scoreAction(m: MatchState, a: Action, rng: () => number): number {
   const myPathSet = new Set(myPathAfter.pathCells);
   if (ownCellsOf(a).some((k) => myPathSet.has(k))) score += 45;
 
+  // 干线偏好：V 格既是红方竖线的干线格、也是蓝方横线的干线格，直通靠它
+  if (ownCellsOf(a).some((k) => k.startsWith('V'))) score += 8;
+
   // 夺路/断路加成：作用于对手当前最短路径上的位置
   if (hitsOpponentPath(a, oppPathSet)) {
     if (a.kind === 'convert' || a.kind === 'skill') score += 130;
