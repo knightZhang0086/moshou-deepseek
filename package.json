@@ -10,9 +10,11 @@
     "typecheck": "pnpm -r typecheck",
     "dev:web": "pnpm --filter @moshou/web dev",
     "dev:server": "pnpm --filter @moshou/server dev",
-    "sim": "pnpm --filter @moshou/engine sim"
+    "sim": "pnpm --filter @moshou/engine sim",
+    "e2e": "node e2e/smoke.mjs"
   },
   "devDependencies": {
+    "playwright-core": "^1.64.1",
     "typescript": "^5.7.2"
   },
   "packageManager": "pnpm@11.7.0"

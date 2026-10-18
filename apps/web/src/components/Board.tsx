@@ -499,7 +499,7 @@ export default function Board(props: BoardProps) {
             </text>
           </g>
 
-          {/* 点击热区（整格） */}
+          {/* 点击热区：桥位（0.5 见方，互不重叠，避免点错相邻位） */}
           <g>
             {all.map((c) => {
               const k = cellKey(c);
@@ -508,13 +508,39 @@ export default function Board(props: BoardProps) {
                 <rect
                   key={`h${k}`}
                   className={`cell-hit${props.canAct ? ' active' : ''}`}
-                  x={p.x - 0.5}
-                  y={p.y - 0.5}
-                  width={1}
-                  height={1}
+                  data-cell={k}
+                  x={p.x - 0.25}
+                  y={p.y - 0.25}
+                  width={0.5}
+                  height={0.5}
                   fill="transparent"
                   onClick={() => props.onCellClick(k)}
                   onPointerEnter={() => handleHover(k)}
+                  onPointerLeave={() => handleHover(null)}
+                />
+              );
+            })}
+          </g>
+
+          {/* 点击热区：已有木片沿自身方向的长条（便于点中木片执行易械/技能） */}
+          <g>
+            {sticks.map(({ key, c, stick }) => {
+              const p = cellCenter(c);
+              const horizontal = orientedHorizontal(c, stick.side);
+              const w = horizontal ? 0.9 : 0.34;
+              const h = horizontal ? 0.34 : 0.9;
+              return (
+                <rect
+                  key={`st${key}`}
+                  className={`cell-hit stick-hit${props.canAct ? ' active' : ''}`}
+                  data-stick-cell={key}
+                  x={p.x - w / 2}
+                  y={p.y - h / 2}
+                  width={w}
+                  height={h}
+                  fill="transparent"
+                  onClick={() => props.onCellClick(key)}
+                  onPointerEnter={() => handleHover(key)}
                   onPointerLeave={() => handleHover(null)}
                 />
               );

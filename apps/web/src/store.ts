@@ -337,8 +337,8 @@ export const useGame = create<GameStore>()((set, get) => {
         session: {
           mode: 'ai',
           state,
-          redName: mySide === 'red' ? myName : '墨子',
-          blueName: mySide === 'blue' ? myName : '公输盘',
+          redName: mySide === 'red' ? myName : '公输盘',
+          blueName: mySide === 'blue' ? myName : '墨子',
           aiSide,
           aiLevel,
           config,

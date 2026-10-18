@@ -8,3 +8,4 @@ Thumbs.db
 apps/web/dist/
 .env
 .env.local
+e2e/artifacts/
